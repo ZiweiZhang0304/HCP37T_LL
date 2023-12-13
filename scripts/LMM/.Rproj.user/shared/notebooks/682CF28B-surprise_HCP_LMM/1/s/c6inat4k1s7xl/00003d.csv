@@ -1,0 +1,6 @@
+"0","ggplot(surprise_null_test_df, aes(x=rho_value, fill=distribution)) + geom_histogram(alpha=.5, position=""identity"") + "
+"0","  scale_fill_manual(values = c(""black"",""darkgray"")) +"
+"0","  geom_vline(xintercept = mean(corr_list_surprise_observed), color='firebrick2', size=0.5) +"
+"0","  geom_vline(xintercept = mean(surprise_null_df_mean_bysub_dist), color='gray', size=0.5) +"
+"0","  labs(x=""null t value for rho"", y=""count"") + theme_classic() + theme(axis.text.x = element_text(size=15), axis.text.y = element_text(size=15)) "
+"0",""

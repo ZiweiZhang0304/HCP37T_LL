@@ -1,0 +1,28 @@
+{
+    "id": "AE9641F5",
+    "path": "~/Downloads/HCP37T_LL/scripts/LMM/surprise_HCP_LMM.Rmd",
+    "project_path": "surprise_HCP_LMM.Rmd",
+    "type": "r_markdown",
+    "hash": "4052790585",
+    "contents": "",
+    "dirty": true,
+    "created": 1700678376926.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "tempName": "Untitled1",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "826,0",
+        "scrollLine": "820",
+        "last_setup_crc32": "79F1ADBCe45d7df9"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1702310409,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1702310459295,
+    "read_only": false,
+    "read_only_alternatives": []
+}

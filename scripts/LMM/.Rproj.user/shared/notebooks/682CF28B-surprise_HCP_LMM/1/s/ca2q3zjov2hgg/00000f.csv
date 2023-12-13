@@ -1,0 +1,2 @@
+"0","network_score_all_long_final <- network_score_all_long_cut1[!(network_score_all_long_cut1$clip_names==""test_retest"" & network_score_all_long_cut1$run %in% c(1,3,4)),]"
+"0","network_score_all_long_final"

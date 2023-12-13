@@ -1,0 +1,8 @@
+"0","socialinteraction_behav_rating_allsub = list()"
+"0",""
+"0","for (i in 1:length(socialinteraction_behav_rating_folder_files)) {"
+"0","  socialinteraction_behav_rating_folder_files_read <- read.csv(paste0(socialinteraction_behav_rating_folder, '/', socialinteraction_behav_rating_folder_files[i]))"
+"0","  socialinteraction_behav_rating_allsub[[i]] <- socialinteraction_behav_rating_folder_files_read"
+"0","}"
+"0","socialinteraction_behav_rating_all = do.call(rbind, socialinteraction_behav_rating_allsub)"
+"0","socialinteraction_behav_rating_all"

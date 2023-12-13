@@ -1,0 +1,44 @@
+%% ------ circle shifting ------ %%
+%% generate circle shifting behavioral parameters
+load('/Users/ziweizhang/Downloads/NCAA_surprise/shared/analysis/in_hrf.mat');
+
+behav_file_origin = readtable("/Users/ziweizhang/Downloads/HCP37T_LL/output/behav_ratings/brain_score_behav_rating.csv");
+behav_file = behav_file_origin;
+
+participant_num = unique(behav_file.('participant'));
+clip_names = unique(behav_file.('unique_clip_names'));
+
+%% 
+behav_surprise_hrf = [];
+for s = 1: length(participant_num)
+    for g = 1: length(clip_names)
+        rows = (strcmp(behav_file.unique_clip_names,clip_names{g}));
+        clip_surprise = behav_file(rows,'behav_surprise').('behav_surprise');
+        
+        %convolved with hrf
+        surprise_clip_con = conv(clip_surprise(:,1),hrf,'same');
+        behav_surprise_hrf = vertcat(behav_surprise_hrf, surprise_clip_con);
+    end
+end
+%% Deal with unequal length after convolving
+signal = rand(1,100);%[-1 2 3 -2 0 1 2];
+kernel = rand(1,51); %[2 4 -1 1];
+same = conv(signal,kernel,'same');
+diff = conv(signal,kernel);
+
+padding_count = floor((length(kernel) - 1) / 2);
+padded_signal = horzcat(zeros(1,padding_count), signal, zeros(1,padding_count));
+convolution = conv(padded_signal, kernel);
+
+%% Example for padding
+% signal = rand(100)
+% kernel = rand(51)
+% padding_count = Int((length(kernel) - 1) / 2)
+% padding_signal = vcat(zeros(padding_count), signal, zeros(padding_count))
+% convolution = xcorr(padded_signal, kernel, padmpde=:none)
+% convolution2 = conv(padded_signal, kernel)
+
+%% save
+surprise_cir_overall_uncut_table = array2table(surprise_cir_overall_uncut);
+%writetable(surprise_cir_overall_uncut_table, '/Users/ziweizhang/Downloads/HCP37T_LL/output/behav_ratings/surprise_cir_all_nshift_05.csv');
+

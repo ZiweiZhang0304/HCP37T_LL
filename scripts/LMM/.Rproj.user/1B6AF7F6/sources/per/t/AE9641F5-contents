@@ -1,0 +1,842 @@
+---
+title: "surprise_HCP_LMM"
+author: "Ziwei Zhang"
+date: "2023-11-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(lme4)
+library(ggplot2)
+library(tidyr)
+library(lmerTest)
+library(rstatix)
+library(ppcor)
+library(data.table)
+library(arsenal)
+library(splitstackshape)
+library(R.matlab)
+library(ppcor)
+```
+
+```{r}
+network_score_folder <- "/Users/ziweizhang/Downloads/HCP37T_LL/data/brain/score"
+```
+
+```{r}
+network_score_folder_files <- list.files(path=network_score_folder, pattern=NULL, all.files=FALSE,
+    full.names=FALSE)
+network_score_folder_files
+```
+
+## Read each subject's folder, and then concatenate across runs
+```{r}
+network_score_datalist_allsub = list()
+
+for (i in 1:length(network_score_folder_files)) {
+  
+  network_score_folder_file_read <- read.csv(paste0(network_score_folder, '/', network_score_folder_files[i]))
+  #network_score_folder_file_name_ <- list.files(path=network_score_folder_sub_name, pattern=NULL, all.files=FALSE, full.names=FALSE)
+  network_score_datalist_allsub[[i]] <- network_score_folder_file_read
+  
+}
+
+network_score_all = do.call(cbind, network_score_datalist_allsub)
+network_score_all
+```
+
+# Change column names to 1-119
+```{r}
+subj_num_list <- 1:119
+names(network_score_all) <- str_pad(subj_num_list, 3, pad = "0")
+network_score_all
+```
+```{r}
+subj_name_list <- c('102311', '104416', '105923', '108323', '109123', '111514', '114823', '115017', 
+        '118225', '125525', '128935', '130114', '131217', '135124', '137128', '146129', 
+        '146432', '146735', '146937', '148133', '155938', '156334', '157336', '158035', 
+        '159239', '162935', '164636', '165436', '167036', '167440', '172130', '173334', 
+        '175237', '176542', '177140', '177645', '178243', '180533', '181232', '182739', 
+        '185442', '187345', '191033', '191336', '191841', '192641', '193845', '195041', 
+        '196144', '198653', '199655', '200311', '200614', '203418', '204521', '209228', 
+        '212419', '214019', '214524', '239136', '246133', '249947', '251833', '263436', 
+        '318637', '330324', '352738', '360030', '380036', '385046', '389357', '393247', 
+        '395756', '397760', '401422', '406836', '412528', '429040', '436845', '463040', 
+        '467351', '525541', '541943', '573249', '581450', '601127', '617748', '627549', 
+        '638049', '654552', '671855', '680957', '690152', '724446', '725751', '732243', 
+        '757764', '765864', '770352', '782561', '783462', '789373', '814649', '818859', 
+        '826353', '859671', '861456', '872764', '878877', '898176', '899885', '901139', 
+        '910241', '927359', '942658', '943862', '958976', '966975', '971160')
+network_score_all_copy <- network_score_all
+names(network_score_all_copy) <- subj_name_list
+network_score_all_copy
+```
+
+```{r}
+network_score_all_copy_long <- melt(network_score_all_copy)
+names(network_score_all_copy_long) <- c("participant_ID","network_score")
+network_score_all_copy_long
+```
+
+# Wide to long, add participant id
+```{r}
+network_score_all_long <- melt(network_score_all)
+names(network_score_all_long) <- c("participant","network_score")
+network_score_all_long$participant_ID <- network_score_all_copy_long$participant_ID
+network_score_all_long
+```
+
+
+# Add run number
+```{r}
+runs <- c(1,2,3,4)
+runs_name <- rep(runs, c(921, 918, 915, 901))
+length(runs_name)
+network_score_all_long$run <- runs_name
+network_score_all_long
+```
+
+# Add clip info
+```{r}
+clip_names <- c("rest","clip1","rest","clip2","rest","clip3","rest","clip4","rest","test_retest","rest",
+                 "rest","clip1","rest","clip2","rest","clip3","rest","test_retest","rest",
+                 "rest","clip1","rest","clip2","rest","clip3","rest","clip4","rest","test_retest","rest",
+                 "rest","clip1","rest","clip2","rest","clip3","rest","test_retest","rest"
+                 )
+
+clip_names_long <- rep(clip_names, c(20, 245, 20, 221, 20, 188, 20, 63, 20, 83, 21,
+                                     20, 228, 20, 259, 20, 250, 20, 83, 18,
+                                     20, 180, 20, 185, 20, 203, 20, 143, 20, 83, 21,
+                                     20, 234, 20, 231, 20, 255, 20, 83, 18))
+
+clip_names_long_full <- rep(clip_names_long, 119)
+
+network_score_all_long$clip_names <- clip_names_long_full
+network_score_all_long
+```
+
+# Load FD motion
+```{r}
+reanalysis_FD <- read.csv('/Users/ziweizhang/Downloads/HCP37T_LL/output/motion/reanlysis_FD.csv')
+reanalysis_FD$participant_ID <- as.factor(reanalysis_FD$participant_ID)
+reanalysis_FD
+```
+
+
+# Merge FD with brain score to prepare for cutting rest data 
+```{r}
+network_score_all_long$reanalysis_FD <- reanalysis_FD$reanalysis_FD
+network_score_all_long
+```
+
+
+# Cut rest
+```{r}
+network_score_all_long_cut1 <- network_score_all_long[!(network_score_all_long$clip_names=="rest"),]
+network_score_all_long_cut1
+```
+
+
+# Run simple correlation, not controlling for motion first
+```{r}
+network_score_all_long_final <- network_score_all_long_cut1[!(network_score_all_long_cut1$clip_names=="test_retest" & network_score_all_long_cut1$run %in% c(1,3,4)),]
+network_score_all_long_final
+```
+
+
+
+# Run simple correlation, controlling for motion
+```{r}
+353192/119 # match with 717 + 820 + 711 + 720
+```
+
+
+# Read surprise rating csv
+```{r}
+surprise_behav_rating_folder <- '/Users/ziweizhang/Downloads/HCP37T_LL/output/behav_ratings/surprise'
+surprise_behav_rating_folder_files <- list.files(path=surprise_behav_rating_folder, pattern=NULL, all.files=FALSE,
+    full.names=FALSE)
+surprise_behav_rating_folder_files
+```
+
+
+```{r}
+surprise_behav_rating_allsub = list()
+
+for (i in 1:length(surprise_behav_rating_folder_files)) {
+  surprise_behav_rating_folder_files_read <- read.csv(paste0(surprise_behav_rating_folder, '/', surprise_behav_rating_folder_files[i]))
+  surprise_behav_rating_allsub[[i]] <- surprise_behav_rating_folder_files_read
+}
+
+surprise_behav_rating_all = do.call(rbind, surprise_behav_rating_allsub)
+surprise_behav_rating_all
+```
+
+# Combine
+```{r}
+network_score_all_long_final$behav_surprise <- surprise_behav_rating_all$X0
+network_score_all_long_final
+```
+
+
+# Correlation
+```{r}
+corr_list_surprise <- c()
+for (i in 1:length(unique(network_score_all_long_final$participant))) {
+  id <- unique(network_score_all_long_final$participant)[i]
+  brain_behav_sub <- network_score_all_long_final[network_score_all_long_final$participant==id, c('network_score','behav_surprise','reanalysis_FD')]
+  brain_behav_sub_nonan <- na.omit(brain_behav_sub)
+  
+  # Option 1: correlation
+  #corr_list[i] <- cor(brain_behav_sub_nonan$network_score, brain_behav_sub_nonan$behav_surprise, method=c("pearson"))
+  
+  # Option 2: partial correlation
+  pcor_results <- pcor.test(brain_behav_sub_nonan$network_score, brain_behav_sub_nonan$behav_surprise,brain_behav_sub_nonan$reanalysis_FD,method="spearman")
+  corr_list_surprise[i] <- pcor_results$estimate
+  
+  # Option 3: linear regression
+  # model_sub <- lm(behav_surprise ~ network_score + reanalysis_FD, data=brain_behav_sub_nonan)
+  # corr_list[i] <- summary(model_sub)$coefficients['network_score','t value']
+}
+
+corr_df_surprise <- data.frame(corr_list_surprise)
+corr_df_surprise
+```
+
+
+```{r}
+pcor_results <- pcor.test(brain_behav_sub_nonan$network_score, brain_behav_sub_nonan$behav_surprise,brain_behav_sub_nonan$reanalysis_FD,method="spearman")
+pcor_results$estimate
+```
+
+```{r}
+mean(corr_list_surprise)
+t.test(corr_list_surprise, mu = 0, alternative = "greater")
+```
+
+```{r}
+ggplot(corr_df_surprise, aes(x=corr_list_surprise)) +
+    geom_histogram(colour="black", fill="white") +
+    geom_vline(aes(xintercept=mean(corr_list, na.rm=T)),   # Ignore NA values for mean
+               color="red", linetype="dashed", size=1)
+```
+
+# Read focus data
+```{r}
+focus_behav_rating_folder <- '/Users/ziweizhang/Downloads/HCP37T_LL/output/behav_ratings/focus'
+focus_behav_rating_folder_files <- list.files(path=focus_behav_rating_folder, pattern=NULL, all.files=FALSE,
+    full.names=FALSE)
+focus_behav_rating_folder_files
+```
+
+
+```{r}
+focus_behav_rating_allsub = list()
+
+for (i in 1:length(focus_behav_rating_folder_files)) {
+  focus_behav_rating_folder_files_read <- read.csv(paste0(focus_behav_rating_folder, '/', focus_behav_rating_folder_files[i]))
+  focus_behav_rating_allsub[[i]] <- focus_behav_rating_folder_files_read
+}
+focus_behav_rating_all = do.call(rbind, focus_behav_rating_allsub)
+focus_behav_rating_all
+```
+
+# Combine
+```{r}
+network_score_all_long_final$behav_focus <-focus_behav_rating_all$X0
+network_score_all_long_final
+```
+
+
+# Correlation
+```{r}
+corr_list_focus <- c()
+for (i in 1:length(unique(network_score_all_long_final$participant))) {
+  id <- unique(network_score_all_long_final$participant)[i]
+  brain_behav_sub <- network_score_all_long_final[network_score_all_long_final$participant==id, c('network_score','behav_focus')]
+  brain_behav_sub_nonan <- na.omit(brain_behav_sub)
+  corr_list_focus[i] <- cor(brain_behav_sub_nonan$network_score, brain_behav_sub_nonan$behav_focus, method=c("pearson"))
+}
+corr_df_focus <- data.frame(corr_list_focus)
+corr_df_focus
+```
+
+```{r}
+mean(corr_list_focus)
+t.test(corr_list_focus, mu = 0, alternative = "greater")
+```
+
+```{r}
+ggplot(corr_df_focus, aes(x=corr_list_focus)) +
+    geom_histogram(colour="black", fill="white") +
+    geom_vline(aes(xintercept=mean(corr_list_focus, na.rm=T)),   # Ignore NA values for mean
+               color="red", linetype="dashed", size=1)
+```
+
+
+# Read importance data
+```{r}
+importance_behav_rating_folder <- '/Users/ziweizhang/Downloads/HCP37T_LL/output/behav_ratings/importance'
+importance_behav_rating_folder_files <- list.files(path=importance_behav_rating_folder, pattern=NULL, all.files=FALSE,
+    full.names=FALSE)
+importance_behav_rating_folder_files
+```
+
+
+```{r}
+importance_behav_rating_allsub = list()
+
+for (i in 1:length(importance_behav_rating_folder_files)) {
+  importance_behav_rating_folder_files_read <- read.csv(paste0(importance_behav_rating_folder, '/', importance_behav_rating_folder_files[i]))
+  importance_behav_rating_allsub[[i]] <- importance_behav_rating_folder_files_read
+}
+importance_behav_rating_all = do.call(rbind, importance_behav_rating_allsub)
+importance_behav_rating_all
+```
+
+# Combine
+```{r}
+network_score_all_long_final$behav_importance <-importance_behav_rating_all$X0
+network_score_all_long_final
+```
+
+# Correlation
+```{r}
+corr_list_importance <- c()
+for (i in 1:length(unique(network_score_all_long_final$participant))) {
+  id <- unique(network_score_all_long_final$participant)[i]
+  brain_behav_sub <- network_score_all_long_final[network_score_all_long_final$participant==id, c('network_score','behav_importance')]
+  brain_behav_sub_nonan <- na.omit(brain_behav_sub)
+  corr_list_importance[i] <- cor(brain_behav_sub_nonan$network_score, brain_behav_sub_nonan$behav_importance, method=c("pearson"))
+}
+corr_df_importance <- data.frame(corr_list_importance)
+corr_df_importance
+```
+
+```{r}
+mean(corr_list_importance)
+t.test(corr_list_importance, mu = 0, alternative = "greater")
+```
+
+```{r}
+ggplot(corr_df_importance, aes(x=corr_list_importance)) +
+    geom_histogram(colour="black", fill="white") +
+    geom_vline(aes(xintercept=mean(corr_list_importance, na.rm=T)),   # Ignore NA values for mean
+               color="red", linetype="dashed", size=1)
+```
+
+
+
+# Read boredom data
+```{r}
+boredom_behav_rating_folder <- '/Users/ziweizhang/Downloads/HCP37T_LL/output/behav_ratings/boredom'
+boredom_behav_rating_folder_files <- list.files(path=boredom_behav_rating_folder, pattern=NULL, all.files=FALSE,
+    full.names=FALSE)
+boredom_behav_rating_folder_files
+```
+
+
+```{r}
+boredom_behav_rating_allsub = list()
+
+for (i in 1:length(boredom_behav_rating_folder_files)) {
+  boredom_behav_rating_folder_files_read <- read.csv(paste0(boredom_behav_rating_folder, '/', boredom_behav_rating_folder_files[i]))
+  boredom_behav_rating_allsub[[i]] <- boredom_behav_rating_folder_files_read
+}
+boredom_behav_rating_all = do.call(rbind, boredom_behav_rating_allsub)
+boredom_behav_rating_all
+```
+
+# Combine
+```{r}
+network_score_all_long_final$behav_boredom <-boredom_behav_rating_all$X0
+network_score_all_long_final
+```
+
+# Correlation
+```{r}
+corr_list_boredom <- c()
+for (i in 1:length(unique(network_score_all_long_final$participant))) {
+  id <- unique(network_score_all_long_final$participant)[i]
+  brain_behav_sub <- network_score_all_long_final[network_score_all_long_final$participant==id, c('network_score','behav_boredom')]
+  brain_behav_sub_nonan <- na.omit(brain_behav_sub)
+  corr_list_boredom[i] <- cor(brain_behav_sub_nonan$network_score, brain_behav_sub_nonan$behav_boredom, method=c("pearson"))
+}
+corr_df_boredom <- data.frame(corr_list_boredom)
+corr_df_boredom
+```
+
+```{r}
+mean(corr_list_boredom)
+t.test(corr_list_boredom, mu = 0, alternative = "less")
+```
+
+```{r}
+ggplot(corr_df_boredom, aes(x=corr_list_boredom)) +
+    geom_histogram(colour="black", fill="white") +
+    geom_vline(aes(xintercept=mean(corr_list_boredom, na.rm=T)),   # Ignore NA values for mean
+               color="red", linetype="dashed", size=1)
+```
+
+
+# Read valence data
+```{r}
+valence_behav_rating_folder <- '/Users/ziweizhang/Downloads/HCP37T_LL/output/behav_ratings/valence'
+valence_behav_rating_folder_files <- list.files(path=valence_behav_rating_folder, pattern=NULL, all.files=FALSE,
+    full.names=FALSE)
+valence_behav_rating_folder_files
+```
+
+
+```{r}
+valence_behav_rating_allsub = list()
+
+for (i in 1:length(valence_behav_rating_folder_files)) {
+  valence_behav_rating_folder_files_read <- read.csv(paste0(valence_behav_rating_folder, '/', valence_behav_rating_folder_files[i]))
+  valence_behav_rating_allsub[[i]] <- valence_behav_rating_folder_files_read
+}
+valence_behav_rating_all = do.call(rbind, valence_behav_rating_allsub)
+valence_behav_rating_all
+```
+
+# Combine
+```{r}
+network_score_all_long_final$behav_valence <-valence_behav_rating_all$X0
+network_score_all_long_final
+```
+
+# Correlation
+```{r}
+corr_list_valence <- c()
+for (i in 1:length(unique(network_score_all_long_final$participant))) {
+  id <- unique(network_score_all_long_final$participant)[i]
+  brain_behav_sub <- network_score_all_long_final[network_score_all_long_final$participant==id, c('network_score','behav_valence')]
+  brain_behav_sub_nonan <- na.omit(brain_behav_sub)
+  corr_list_valence[i] <- cor(brain_behav_sub_nonan$network_score, brain_behav_sub_nonan$behav_valence, method=c("pearson"))
+}
+corr_df_valence <- data.frame(corr_list_valence)
+corr_df_valence
+```
+
+```{r}
+mean(corr_list_valence)
+t.test(corr_list_valence, mu = 0, alternative = "two.sided")
+```
+
+```{r}
+ggplot(corr_df_valence, aes(x=corr_list_valence)) +
+    geom_histogram(colour="black", fill="white") +
+    geom_vline(aes(xintercept=mean(corr_list_valence, na.rm=T)),   # Ignore NA values for mean
+               color="red", linetype="dashed", size=1)
+```
+
+
+# Read comprehension data
+```{r}
+comprehension_behav_rating_folder <- '/Users/ziweizhang/Downloads/HCP37T_LL/output/behav_ratings/comprehension'
+comprehension_behav_rating_folder_files <- list.files(path=comprehension_behav_rating_folder, pattern=NULL, all.files=FALSE,
+    full.names=FALSE)
+comprehension_behav_rating_folder_files
+```
+
+
+```{r}
+comprehension_behav_rating_allsub = list()
+
+for (i in 1:length(comprehension_behav_rating_folder_files)) {
+  comprehension_behav_rating_folder_files_read <- read.csv(paste0(comprehension_behav_rating_folder, '/', comprehension_behav_rating_folder_files[i]))
+  comprehension_behav_rating_allsub[[i]] <- comprehension_behav_rating_folder_files_read
+}
+comprehension_behav_rating_all = do.call(rbind, comprehension_behav_rating_allsub)
+comprehension_behav_rating_all
+```
+
+# Combine
+```{r}
+network_score_all_long_final$behav_comprehension <-comprehension_behav_rating_all$X0
+network_score_all_long_final
+```
+
+# Correlation
+```{r}
+corr_list_comprehension <- c()
+for (i in 1:length(unique(network_score_all_long_final$participant))) {
+  id <- unique(network_score_all_long_final$participant)[i]
+  brain_behav_sub <- network_score_all_long_final[network_score_all_long_final$participant==id, c('network_score','behav_comprehension')]
+  brain_behav_sub_nonan <- na.omit(brain_behav_sub)
+  corr_list_comprehension[i] <- cor(brain_behav_sub_nonan$network_score, brain_behav_sub_nonan$behav_comprehension, method=c("pearson"))
+}
+corr_df_comprehension <- data.frame(corr_list_comprehension)
+corr_df_comprehension
+```
+
+```{r}
+mean(corr_list_comprehension)
+t.test(corr_list_comprehension, mu = 0, alternative = "less")
+```
+
+```{r}
+ggplot(corr_df_comprehension, aes(x=corr_list_comprehension)) +
+    geom_histogram(colour="black", fill="white") +
+    geom_vline(aes(xintercept=mean(corr_list_comprehension, na.rm=T)),   # Ignore NA values for mean
+               color="red", linetype="dashed", size=1)
+```
+
+
+# Read curiosity data
+```{r}
+curiosity_behav_rating_folder <- '/Users/ziweizhang/Downloads/HCP37T_LL/output/behav_ratings/curiosity'
+curiosity_behav_rating_folder_files <- list.files(path=curiosity_behav_rating_folder, pattern=NULL, all.files=FALSE,
+    full.names=FALSE)
+curiosity_behav_rating_folder_files
+```
+
+
+```{r}
+curiosity_behav_rating_allsub = list()
+
+for (i in 1:length(curiosity_behav_rating_folder_files)) {
+  curiosity_behav_rating_folder_files_read <- read.csv(paste0(curiosity_behav_rating_folder, '/', curiosity_behav_rating_folder_files[i]))
+  curiosity_behav_rating_allsub[[i]] <- curiosity_behav_rating_folder_files_read
+}
+curiosity_behav_rating_all = do.call(rbind, curiosity_behav_rating_allsub)
+curiosity_behav_rating_all
+```
+
+# Combine
+```{r}
+network_score_all_long_final$behav_curiosity <-curiosity_behav_rating_all$X0
+network_score_all_long_final
+```
+
+# Correlation
+```{r}
+corr_list_curiosity <- c()
+for (i in 1:length(unique(network_score_all_long_final$participant))) {
+  id <- unique(network_score_all_long_final$participant)[i]
+  brain_behav_sub <- network_score_all_long_final[network_score_all_long_final$participant==id, c('network_score','behav_curiosity')]
+  brain_behav_sub_nonan <- na.omit(brain_behav_sub)
+  corr_list_curiosity[i] <- cor(brain_behav_sub_nonan$network_score, brain_behav_sub_nonan$behav_curiosity, method=c("pearson"))
+}
+corr_df_curiosity <- data.frame(corr_list_curiosity)
+corr_df_curiosity
+```
+
+```{r}
+mean(corr_list_curiosity)
+t.test(corr_list_curiosity, mu = 0, alternative = "greater")
+```
+
+```{r}
+ggplot(corr_df_curiosity, aes(x=corr_list_curiosity)) +
+    geom_histogram(colour="black", fill="white") +
+    geom_vline(aes(xintercept=mean(corr_list_curiosity, na.rm=T)),   # Ignore NA values for mean
+               color="red", linetype="dashed", size=1)
+```
+
+
+# Read relatability data
+```{r}
+relatability_behav_rating_folder <- '/Users/ziweizhang/Downloads/HCP37T_LL/output/behav_ratings/relatability'
+relatability_behav_rating_folder_files <- list.files(path=relatability_behav_rating_folder, pattern=NULL, all.files=FALSE,
+    full.names=FALSE)
+relatability_behav_rating_folder_files
+```
+
+
+```{r}
+relatability_behav_rating_allsub = list()
+
+for (i in 1:length(relatability_behav_rating_folder_files)) {
+  relatability_behav_rating_folder_files_read <- read.csv(paste0(relatability_behav_rating_folder, '/', relatability_behav_rating_folder_files[i]))
+  relatability_behav_rating_allsub[[i]] <- relatability_behav_rating_folder_files_read
+}
+relatability_behav_rating_all = do.call(rbind, relatability_behav_rating_allsub)
+relatability_behav_rating_all
+```
+
+# Combine
+```{r}
+network_score_all_long_final$behav_relatability <-relatability_behav_rating_all$X0
+network_score_all_long_final
+```
+
+# Correlation
+```{r}
+corr_list_relatability <- c()
+for (i in 1:length(unique(network_score_all_long_final$participant))) {
+  id <- unique(network_score_all_long_final$participant)[i]
+  brain_behav_sub <- network_score_all_long_final[network_score_all_long_final$participant==id, c('network_score','behav_relatability')]
+  brain_behav_sub_nonan <- na.omit(brain_behav_sub)
+  corr_list_relatability[i] <- cor(brain_behav_sub_nonan$network_score, brain_behav_sub_nonan$behav_relatability, method=c("pearson"))
+}
+corr_df_relatability <- data.frame(corr_list_relatability)
+corr_df_relatability
+```
+
+```{r}
+mean(corr_list_relatability)
+t.test(corr_list_relatability, mu = 0, alternative = "less")
+```
+
+```{r}
+ggplot(corr_df_relatability, aes(x=corr_list_relatability)) +
+    geom_histogram(colour="black", fill="white") +
+    geom_vline(aes(xintercept=mean(corr_list_relatability, na.rm=T)),   # Ignore NA values for mean
+               color="red", linetype="dashed", size=1)
+```
+
+
+
+# Read socialinteraction data
+```{r}
+socialinteraction_behav_rating_folder <- '/Users/ziweizhang/Downloads/HCP37T_LL/output/behav_ratings/socialinteraction'
+socialinteraction_behav_rating_folder_files <- list.files(path=socialinteraction_behav_rating_folder, pattern=NULL, all.files=FALSE,
+    full.names=FALSE)
+socialinteraction_behav_rating_folder_files
+```
+
+
+```{r}
+socialinteraction_behav_rating_allsub = list()
+
+for (i in 1:length(socialinteraction_behav_rating_folder_files)) {
+  socialinteraction_behav_rating_folder_files_read <- read.csv(paste0(socialinteraction_behav_rating_folder, '/', socialinteraction_behav_rating_folder_files[i]))
+  socialinteraction_behav_rating_allsub[[i]] <- socialinteraction_behav_rating_folder_files_read
+}
+socialinteraction_behav_rating_all = do.call(rbind, socialinteraction_behav_rating_allsub)
+socialinteraction_behav_rating_all
+```
+
+# Combine
+```{r}
+network_score_all_long_final$behav_socialinteraction <-socialinteraction_behav_rating_all$X0
+network_score_all_long_final
+```
+
+# Correlation
+```{r}
+corr_list_socialinteraction <- c()
+for (i in 1:length(unique(network_score_all_long_final$participant))) {
+  id <- unique(network_score_all_long_final$participant)[i]
+  brain_behav_sub <- network_score_all_long_final[network_score_all_long_final$participant==id, c('network_score','behav_socialinteraction')]
+  brain_behav_sub_nonan <- na.omit(brain_behav_sub)
+  corr_list_socialinteraction[i] <- cor(brain_behav_sub_nonan$network_score, brain_behav_sub_nonan$behav_socialinteraction, method=c("pearson"))
+}
+corr_df_socialinteraction <- data.frame(corr_list_socialinteraction)
+corr_df_socialinteraction
+```
+
+```{r}
+mean(corr_list_socialinteraction)
+t.test(corr_list_socialinteraction, mu = 0, alternative = "two.sided")
+```
+
+```{r}
+ggplot(corr_df_socialinteraction, aes(x=corr_list_socialinteraction)) +
+    geom_histogram(colour="black", fill="white") +
+    geom_vline(aes(xintercept=mean(corr_list_socialinteraction, na.rm=T)),   # Ignore NA values for mean
+               color="red", linetype="dashed", size=1)
+```
+
+
+# Export behavioral ratings for convolving with hrf
+```{r}
+network_score_all_long_final$unique_clip_names <- paste0(network_score_all_long_final$run,"_", network_score_all_long_final$clip_names)
+network_score_all_long_final
+```
+
+```{r}
+# write.csv(network_score_all_long_final, file = "/Users/ziweizhang/Downloads/HCP37T_LL/output/behav_ratings/brain_score_behav_rating.csv",row.names = FALSE)
+```
+
+
+
+# ----- Convolved behavior with HRF ----- #
+```{r}
+behav_var_hrf_table <- read.csv('/Users/ziweizhang/Downloads/HCP37T_LL/output/behav_ratings/behav_var_hrf_table.csv')
+behav_var_hrf_table
+```
+
+```{r}
+network_score_all_long_final_withhrf <- cbind(network_score_all_long_final, behav_var_hrf_table)
+network_score_all_long_final_withhrf
+```
+
+
+```{r}
+# Save for circle shifted null generation
+# write.csv(network_score_all_long_final_withhrf, file = "/Users/ziweizhang/Downloads/HCP37T_LL/output/behav_ratings/brain_score_behav_rating_hrf.csv",row.names = FALSE)
+```
+
+# Take behav_var_hrf from one participant (b/c all subs have the same)
+```{r}
+network_score_all_long_final_withhrf_for_null <- network_score_all_long_final_withhrf[network_score_all_long_final_withhrf$participant=="001", c(names(network_score_all_long_final_withhrf)[c(8:length(names(network_score_all_long_final_withhrf)))])]
+network_score_all_long_final_withhrf_for_null
+```
+
+
+```{r}
+# write.csv(network_score_all_long_final_withhrf_for_null, file = "/Users/ziweizhang/Downloads/HCP37T_LL/output/behav_ratings/brain_score_behav_rating_hrf_for_null.csv",row.names = FALSE)
+```
+
+# Correlation
+```{r}
+corr_list_surprise_observed <- c()
+for (i in 1:length(unique(network_score_all_long_final_withhrf$participant))) {
+  id <- unique(network_score_all_long_final_withhrf$participant)[i]
+  brain_behav_sub <- network_score_all_long_final_withhrf[network_score_all_long_final_withhrf$participant==id, c('network_score','behav_surprise_hrf','reanalysis_FD')]
+  brain_behav_sub_nonan <- na.omit(brain_behav_sub)
+  
+  # Option 1: correlation
+  #corr_list[i] <- cor(brain_behav_sub_nonan$network_score, brain_behav_sub_nonan$behav_surprise, method=c("pearson"))
+  
+  # Option 2: partial correlation
+  pcor_results <- pcor.test(brain_behav_sub_nonan$network_score, brain_behav_sub_nonan$behav_surprise_hrf,brain_behav_sub_nonan$reanalysis_FD,method="spearman")
+  corr_list_surprise_observed[i] <- pcor_results$estimate
+  
+  # Option 3: linear regression
+  # model_sub <- lm(behav_surprise ~ network_score + reanalysis_FD, data=brain_behav_sub_nonan)
+  # corr_list[i] <- summary(model_sub)$coefficients['network_score','t value']
+}
+corr_df_surprise_observed <- data.frame(corr_list_surprise_observed)
+corr_df_surprise_observed
+```
+
+
+```{r}
+pcor_results <- pcor.test(brain_behav_sub_nonan$network_score, brain_behav_sub_nonan$behav_surprise_hrf,brain_behav_sub_nonan$reanalysis_FD,method="spearman")
+pcor_results$estimate
+```
+
+```{r}
+mean(corr_list_surprise_observed)
+t.test(corr_list_surprise_observed, mu = 0, alternative = "greater")
+```
+
+```{r}
+ggplot(corr_df_surprise_observed, aes(x=corr_list_surprise_observed)) +
+    geom_histogram(colour="black", fill="white") +
+    geom_vline(aes(xintercept=mean(corr_list, na.rm=T)),   # Ignore NA values for mean
+               color="red", linetype="dashed", size=1)
+```
+
+
+# Read in null time series
+```{r}
+surprise_hrf_cir <- read.csv('/Users/ziweizhang/Downloads/HCP37T_LL/output/behav_ratings/behav_surprise_hrf_cir_all_nshift_05.csv')
+surprise_hrf_cir
+```
+
+```{r}
+#surprise_hrf_cir[which(is.na(surprise_hrf_cir)),]
+na.omit(surprise_hrf_cir)
+```
+
+# Correlation
+```{r}
+corr_list_surprise <- list()
+
+for (i in 1:ncol(surprise_hrf_cir)) { #ncol(surprise_hrf_cir)
+  print(i)
+  surprise_hrf_cir_i <- surprise_hrf_cir[i]
+  
+  corr_list_surprise_i <- c()
+  for (s in 1:length(unique(network_score_all_long_final_withhrf$participant))) {
+    id <- unique(network_score_all_long_final_withhrf$participant)[s]
+    brain_behav_sub <- network_score_all_long_final_withhrf[network_score_all_long_final_withhrf$participant==id, c('network_score','reanalysis_FD')]
+    brain_behav_sub$surprise_hrf_cir_i <- surprise_hrf_cir_i[,1]
+    
+    brain_behav_sub_nonan <- na.omit(brain_behav_sub)
+    
+    # Option 2: partial correlation
+    pcor_results <- pcor.test(brain_behav_sub_nonan$network_score, brain_behav_sub_nonan$surprise_hrf_cir_i,brain_behav_sub_nonan$reanalysis_FD,method="spearman")
+    corr_list_surprise_i[s] <- pcor_results$estimate
+  }
+  corr_list_surprise[[i]] <- corr_list_surprise_i
+}
+print(brain_behav_sub)
+```
+
+```{r}
+number <- c(1:ncol(surprise_hrf_cir))
+
+colnames <- c()
+for (i in 1:length(number)) {
+  colnames[i] <- paste0('round_',number[i])
+}
+colnames
+surprise_null_df <- data.frame(corr_list_surprise)
+names(surprise_null_df) <- colnames
+surprise_null_df
+```
+
+```{r}
+surprise_null_df_mean <- data.frame(colMeans(surprise_null_df))
+names(surprise_null_df_mean)
+surprise_null_df_mean_dist <- surprise_null_df_mean[,1]
+surprise_null_df_mean_dist
+```
+
+
+```{r}
+mean_surprise_observed <- mean(corr_list_surprise_observed)
+
+```
+
+```{r}
+# one-tailed p
+one_tailed_p = (1 + sum(surprise_null_df_mean_dist >= mean_surprise_observed)) / (ncol(surprise_hrf_cir)+1)
+one_tailed_p
+
+# two-tailed p
+two_tailed_p = (1 + sum(abs(surprise_null_df_mean_dist) >= abs(mean_surprise_observed))) / (ncol(surprise_hrf_cir)+1)
+two_tailed_p
+
+```
+
+
+```{r}
+ggplot(surprise_null_df_mean, aes(x=colMeans.surprise_null_df.)) +
+    geom_histogram(colour="black", fill="white") +
+    geom_vline(aes(xintercept=mean_surprise_observed),   # Ignore NA values for mean
+               color="red", linetype="dashed", size=1)
+```
+
+
+```{r}
+surprise_null_df_mean_bysub <- data.frame(rowMeans(surprise_null_df))
+names(surprise_null_df_mean_bysub)
+surprise_null_df_mean_bysub_dist <- surprise_null_df_mean_bysub[,1]
+surprise_null_df_mean_bysub_dist
+```
+
+
+```{r}
+# corr_list_surprise_observed
+surprise_null_test_df <- melt(data.frame(cbind(corr_list_surprise_observed,surprise_null_df_mean_bysub_dist)))
+names(surprise_null_test_df) <- c('distribution','rho_value')
+surprise_null_test_df
+```
+
+```{r}
+t.test(corr_list_surprise_observed, surprise_null_df_mean_bysub_dist, alternative = "greater")
+
+```
+
+
+```{r}
+ggplot(surprise_null_test_df, aes(x=rho_value, fill=distribution)) + geom_histogram(alpha=.5, position="identity") + 
+  scale_fill_manual(values = c("black","darkgray")) +
+  geom_vline(xintercept = mean(corr_list_surprise_observed), color='firebrick2', size=0.5) +
+  geom_vline(xintercept = mean(surprise_null_df_mean_bysub_dist), color='gray', size=0.5) +
+  labs(x="null t value for rho", y="count") + theme_classic() + theme(axis.text.x = element_text(size=15), axis.text.y = element_text(size=15)) 
+
+```
+
+
+
+

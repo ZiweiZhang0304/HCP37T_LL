@@ -1,0 +1,2 @@
+"0","#surprise_hrf_cir[which(is.na(surprise_hrf_cir)),]"
+"0","na.omit(surprise_hrf_cir)"

@@ -1,0 +1,6 @@
+"0","ggplot(corr_df_surprise, aes(x=corr_list_surprise)) +"
+"0","    geom_histogram(colour=""black"", fill=""white"") +"
+"0","    geom_vline(aes(xintercept=mean(corr_list, na.rm=T)),   # Ignore NA values for mean"
+"0","               color=""red"", linetype=""dashed"", size=1)"
+"2","Warning: Using `size` aesthetic for lines was deprecated in ggplot2 3.4.0.
+Please use `linewidth` instead."

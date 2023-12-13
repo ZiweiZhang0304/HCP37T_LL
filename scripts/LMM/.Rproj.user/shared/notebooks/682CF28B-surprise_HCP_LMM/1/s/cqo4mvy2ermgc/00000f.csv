@@ -1,0 +1,8 @@
+"0","importance_behav_rating_allsub = list()"
+"0",""
+"0","for (i in 1:length(importance_behav_rating_folder_files)) {"
+"0","  importance_behav_rating_folder_files_read <- read.csv(paste0(importance_behav_rating_folder, '/', importance_behav_rating_folder_files[i]))"
+"0","  importance_behav_rating_allsub[[i]] <- importance_behav_rating_folder_files_read"
+"0","}"
+"0","importance_behav_rating_all = do.call(rbind, importance_behav_rating_allsub)"
+"0","importance_behav_rating_all"

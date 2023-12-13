@@ -1,0 +1,8 @@
+"0","boredom_behav_rating_allsub = list()"
+"0",""
+"0","for (i in 1:length(boredom_behav_rating_folder_files)) {"
+"0","  boredom_behav_rating_folder_files_read <- read.csv(paste0(boredom_behav_rating_folder, '/', boredom_behav_rating_folder_files[i]))"
+"0","  boredom_behav_rating_allsub[[i]] <- boredom_behav_rating_folder_files_read"
+"0","}"
+"0","boredom_behav_rating_all = do.call(rbind, boredom_behav_rating_allsub)"
+"0","boredom_behav_rating_all"
